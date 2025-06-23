@@ -1,56 +1,44 @@
 const WebSocket = require('ws');
+const PORT = process.env.PORT || 3000;
 
-const wss = new WebSocket.Server({ port: 3000 });
-console.log('✅ Serveur WebSocket démarré sur le port 3000');
+const wss = new WebSocket.Server({ port: PORT });
+console.log('✅ Serveur WebSocket lancé sur le port', PORT);
 
 const users = new Map(); // username => ws
 
-function broadcastUsers() {
-  const usernames = [...users.keys()];
-const message = JSON.stringify({ type: 'user-list', users: usernames });
-
-  users.forEach(ws => {
-    ws.send(message);
-  });
-}
-
 wss.on('connection', ws => {
-  ws.on('message', message => {
-    let data;
-    try {
-      data = JSON.parse(message);
-    } catch (e) {
-      console.error("❌ Message JSON invalide :", message);
-      return;
-    }
+  let username = null;
+
+  ws.on('message', msg => {
+    const data = JSON.parse(msg);
 
     // Enregistrement utilisateur
     if (data.type === 'register') {
-      if (data.username) {
-        ws.username = data.username;
-        users.set(data.username, ws);
-        console.log(`👤 ${data.username} est connecté`);
-        broadcastUsers(); // ➕ Mise à jour pour tout le monde
-      }
+      username = data.username;
+      users.set(username, ws);
+      updateUserList();
       return;
     }
 
-    // Relais des messages (appel, réponse, ICE)
-    const targetWs = users.get(data.to);
-    if (targetWs) {
-      data.from = ws.username;
-      targetWs.send(JSON.stringify(data));
-      console.log(`🔄 Message de ${data.from} vers ${data.to} : ${data.type}`);
-    } else {
-      console.warn(`⚠️ Utilisateur ${data.to} non trouvé`);
+    // Relay messages (appel, réponse, ICE)
+    const dest = users.get(data.to);
+    if (dest) {
+      data.from = username; // 👈 important pour notification
+      dest.send(JSON.stringify(data));
+      console.log(`🔁 ${data.type} de ${username} vers ${data.to}`);
     }
   });
 
   ws.on('close', () => {
-    if (ws.username) {
-      users.delete(ws.username);
-      console.log(`❌ ${ws.username} déconnecté`);
-      broadcastUsers(); // ➖ Mise à jour pour tout le monde
+    if (username) {
+      users.delete(username);
+      updateUserList();
     }
   });
+
+  function updateUserList() {
+    const userList = Array.from(users.keys());
+    const payload = JSON.stringify({ type: 'user-list', users: userList });
+    users.forEach(client => client.send(payload));
+  }
 });
