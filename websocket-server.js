@@ -7,7 +7,7 @@ const users = new Map(); // username => ws
 
 function broadcastUsers() {
   const usernames = [...users.keys()];
-  const message = JSON.stringify({ type: 'users', users: usernames });
+const message = JSON.stringify({ type: 'user-list', users: usernames });
 
   users.forEach(ws => {
     ws.send(message);
