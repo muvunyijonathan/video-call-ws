@@ -1,39 +1,45 @@
 const WebSocket = require('ws');
-const PORT = process.env.PORT || 3000;
 
-const wss = new WebSocket.Server({ port: PORT });
-console.log('Serveur WebSocket lancé sur le port', PORT);
+const wss = new WebSocket.Server({ port: 3000 });
+console.log('✅ Serveur WebSocket démarré sur le port 3000');
 
 const users = new Map(); // username => ws
 
 wss.on('connection', ws => {
-  let username = null;
-
-  ws.on('message', msg => {
-    const data = JSON.parse(msg);
-
-    if (data.type === 'register') {
-      username = data.username;
-      users.set(username, ws);
-      updateUserList();
+  ws.on('message', message => {
+    let data;
+    try {
+      data = JSON.parse(message);
+    } catch (e) {
+      console.error("❌ Message JSON invalide :", message);
+      return;
     }
 
-    if (data.type === 'offer' || data.type === 'answer' || data.type === 'ice-candidate') {
-      const dest = users.get(data.to);
-      if (dest) dest.send(JSON.stringify(data));
+    // Enregistrement du nom d'utilisateur
+    if (data.type === 'register') {
+      if (data.username) {
+        ws.username = data.username;
+        users.set(data.username, ws);
+        console.log(`👤 ${data.username} est enregistré`);
+      }
+      return;
+    }
+
+    // Relais des messages
+    const targetWs = users.get(data.to);
+    if (targetWs) {
+      data.from = ws.username; // assure que 'from' est présent
+      targetWs.send(JSON.stringify(data));
+      console.log(`🔄 Message de ${data.from} vers ${data.to} : ${data.type}`);
+    } else {
+      console.warn(`⚠️ Utilisateur ${data.to} non trouvé`);
     }
   });
 
   ws.on('close', () => {
-    if (username) {
-      users.delete(username);
-      updateUserList();
+    if (ws.username) {
+      users.delete(ws.username);
+      console.log(`❌ ${ws.username} déconnecté`);
     }
   });
-
-  function updateUserList() {
-    const userList = Array.from(users.keys());
-    const payload = JSON.stringify({ type: 'user-list', users: userList });
-    users.forEach(client => client.send(payload));
-  }
 });
